@@ -1,5 +1,6 @@
 import os
 import json
+import re
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -22,7 +23,6 @@ client = MongoClient(MONGO_URI)
 db = client['assetprim_uploader'] 
 collection = db['upload_logs'] 
 
-# বটের পাঠানো JSON রিসিভ করার জন্য মডেল
 class QueryModel(BaseModel):
     query: str = ""
 
@@ -30,7 +30,6 @@ class QueryModel(BaseModel):
 def home():
     return {"Message": "API is successfully running on Render!"}
 
-# 🌐 আপনার ওয়েবসাইটের জন্য (GET Endpoint)
 @app.get("/api/data")
 def get_data():
     try:
@@ -40,34 +39,58 @@ def get_data():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# 🤖 আপনার টেলিগ্রাম বটের জন্য (POST Endpoint)
+# 🤖 বটের জন্য স্মার্ট সার্চ এন্ডপয়েন্ট (Stopwords + Keyword Logic)
 @app.post("/search")
 def search_api(payload: QueryModel):
     try:
-        user_query = payload.query
+        q = (payload.query or "").lower()
         
-        if not user_query.strip():
-            # কিছু না খুঁজলে লেটেস্ট ৫টি কোর্স দেবে
+        # 1) stopword বাদ দিয়ে keyword বের করা
+        stop = {"ase", "naki", "ki", "course", "koi", "ache", "hobe", "er", "a", "the", "do", "you", "have", "any", "is", "there", "কি", "আছে", "কোর্স", "নাকি"}
+        
+        # রেগুলার এক্সপ্রেশন দিয়ে স্পেস বা বিরামচিহ্ন দিয়ে ভাগ করে stopwords রিমুভ করা
+        raw_words = re.split(r'[\s,?!।]+', q)
+        words = [w for w in raw_words if w and w not in stop]
+        
+        if not words:
+            # যদি শুধু stop words থাকে (যেমন: "course ki ase?"), তখন লেটেস্ট ৫টি কোর্স দিবে
             cursor = collection.find({}).sort("_id", -1).limit(5)
         else:
-            # ইউজারের টেক্সট অনুযায়ী সার্চ
-            smart_term = user_query.strip().replace(" ", ".*")
-            search_regex = {"$regex": smart_term, "$options": "i"}
-            cursor = collection.find({"title": search_regex}).limit(5)
+            # 2) প্রতিটা keyword দিয়ে partial (contains) search — যেকোনো একটা মিললেই
+            or_clauses = []
+            for w in words:
+                or_clauses.append({"title": {"$regex": w, "$options": "i"}})
+                
+                # ⚠️ আপনার ডাটাবেসে যদি category বা tags নামে ফিল্ড থাকে, তবে নিচের লাইনগুলো আনকমেন্ট করে দেবেন:
+                # or_clauses.append({"category": {"$regex": w, "$options": "i"}})
+                # or_clauses.append({"tags": {"$regex": w, "$options": "i"}})
+            
+            # MongoDB তে $or দিয়ে কোয়েরি করা হচ্ছে
+            cursor = collection.find({"$or": or_clauses}).limit(5)
             
         courses = list(cursor)
         
         if not courses:
-            return {"text": "Sorry, I couldn't find any courses matching your query."}
+            return {"context": "No matching course found."}
             
-        answer = "Here is the relevant course information from the database:\n\n"
+        # 3) Context সাজানো (আপনার JS কোডের হুবহু স্টাইলে)
+        context_parts = []
         for c in courses:
-            title = c.get('title', 'Unknown Course')
-            status = c.get('status', 'N/A')
-            answer += f"📌 {title}\n- Status: {status}\n\n"
+            title = c.get("title", "Unknown Course")
+            status = c.get("status", "not available")
             
-        # বটের call_integration-এর শর্ত অনুযায়ী 'text' ভ্যারিয়েবলে ডেটা পাঠানো হচ্ছে
-        return {"text": answer}
+            # আপনার ডাটাবেসে price বা summary ফিল্ড থাকলে সেগুলোও যুক্ত করতে পারবেন:
+            # price = c.get("price", "0")
+            # summary = c.get("summary", "")
+            # context_parts.append(f"{title} — {price}৳ — {status}. {summary}")
+            
+            # আপাতত title এবং status দিয়ে স্ট্রিং তৈরি করা হলো
+            context_parts.append(f"{title} — Status: {status}")
+            
+        # " | " দিয়ে সবগুলো কোর্সকে একসাথে যুক্ত করা
+        answer = " | ".join(context_parts)
+        
+        return {"context": answer}
         
     except Exception as e:
-        return {"text": f"Error: {str(e)}"}
+        return {"context": f"Error: {str(e)}"}
