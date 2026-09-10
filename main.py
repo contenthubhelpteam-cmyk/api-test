@@ -26,10 +26,21 @@ collection = db['upload_logs']
 class QueryModel(BaseModel):
     query: str = ""
 
+# 🟢 1. Home Endpoint
 @app.get("/")
 def home():
     return {"Message": "API is successfully running on Render!"}
 
+# 🟢 2. Ping / Health Check Endpoint (নতুন যুক্ত করা হলো)
+@app.get("/ping")
+def ping():
+    return {
+        "status": "success", 
+        "ping": "pong", 
+        "message": "Server is healthy and active!"
+    }
+
+# 🟢 3. Website Data Fetch Endpoint
 @app.get("/api/data")
 def get_data():
     try:
@@ -39,13 +50,13 @@ def get_data():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# 🤖 বটের স্মার্ট সার্চ এন্ডপয়েন্ট (Beautiful AI Context Formatting)
+# 🟢 4. AI Bot Smart Search Endpoint
 @app.post("/search")
 def search_api(payload: QueryModel):
     try:
         q = (payload.query or "").lower()
         
-        # 1) Stopwords বাদ দিয়ে keyword বের করা
+        # Stopwords বাদ দিয়ে keyword বের করা
         stop = {"ase", "naki", "ki", "course", "koi", "ache", "hobe", "er", "a", "the", "do", "you", "have", "any", "is", "there", "কি", "আছে", "কোর্স", "নাকি", "চাই", "লাগবে", "chai", "lagbe"}
         
         raw_words = re.split(r'[\s,?!।]+', q)
@@ -54,7 +65,6 @@ def search_api(payload: QueryModel):
         if not words:
             cursor = collection.find({}).sort("_id", -1).limit(5)
         else:
-            # 2) Partial (contains) search
             or_clauses = [{"title": {"$regex": w, "$options": "i"}} for w in words]
             cursor = collection.find({"$or": or_clauses}).limit(5)
             
@@ -63,7 +73,7 @@ def search_api(payload: QueryModel):
         if not courses:
             return {"context": "No matching courses found in the database for this specific query."}
             
-        # 3) AI-এর জন্য সুন্দর করে গুছিয়ে Context তৈরি করা
+        # AI-এর জন্য সুন্দর করে গুছিয়ে Context তৈরি করা
         context_header = "Here are the exact matching courses found in the database:\n"
         context_parts = []
         
@@ -71,14 +81,9 @@ def search_api(payload: QueryModel):
             title = c.get("title", "Unknown Course")
             status = c.get("status", "Not Specified")
             
-            # আপনার ডাটাবেসে অন্য ফিল্ড থাকলে এখানে যুক্ত করতে পারেন:
-            # price = c.get("price", "Free")
-            # item_text = f"{idx}. 📚 Course Name: {title}\n   🔹 Price: {price}\n   🔹 Status: {status}"
-            
             item_text = f"{idx}. 📚 Course Name: {title}\n   🔹 Status: {status}"
             context_parts.append(item_text)
             
-        # লাইন ব্রেক দিয়ে ডেটাগুলো জোড়া লাগানো
         answer = context_header + "\n" + "\n\n".join(context_parts)
         
         return {"context": answer}
