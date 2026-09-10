@@ -9,7 +9,7 @@ from bson import json_util
 
 app = FastAPI()
 
-# CORS Setup (ওয়েবসাইটের জন্য)
+# CORS Setup
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -39,58 +39,49 @@ def get_data():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# 🤖 বটের জন্য স্মার্ট সার্চ এন্ডপয়েন্ট (Stopwords + Keyword Logic)
+# 🤖 বটের স্মার্ট সার্চ এন্ডপয়েন্ট (Beautiful AI Context Formatting)
 @app.post("/search")
 def search_api(payload: QueryModel):
     try:
         q = (payload.query or "").lower()
         
-        # 1) stopword বাদ দিয়ে keyword বের করা
-        stop = {"ase", "naki", "ki", "course", "koi", "ache", "hobe", "er", "a", "the", "do", "you", "have", "any", "is", "there", "কি", "আছে", "কোর্স", "নাকি"}
+        # 1) Stopwords বাদ দিয়ে keyword বের করা
+        stop = {"ase", "naki", "ki", "course", "koi", "ache", "hobe", "er", "a", "the", "do", "you", "have", "any", "is", "there", "কি", "আছে", "কোর্স", "নাকি", "চাই", "লাগবে", "chai", "lagbe"}
         
-        # রেগুলার এক্সপ্রেশন দিয়ে স্পেস বা বিরামচিহ্ন দিয়ে ভাগ করে stopwords রিমুভ করা
         raw_words = re.split(r'[\s,?!।]+', q)
         words = [w for w in raw_words if w and w not in stop]
         
         if not words:
-            # যদি শুধু stop words থাকে (যেমন: "course ki ase?"), তখন লেটেস্ট ৫টি কোর্স দিবে
             cursor = collection.find({}).sort("_id", -1).limit(5)
         else:
-            # 2) প্রতিটা keyword দিয়ে partial (contains) search — যেকোনো একটা মিললেই
-            or_clauses = []
-            for w in words:
-                or_clauses.append({"title": {"$regex": w, "$options": "i"}})
-                
-                # ⚠️ আপনার ডাটাবেসে যদি category বা tags নামে ফিল্ড থাকে, তবে নিচের লাইনগুলো আনকমেন্ট করে দেবেন:
-                # or_clauses.append({"category": {"$regex": w, "$options": "i"}})
-                # or_clauses.append({"tags": {"$regex": w, "$options": "i"}})
-            
-            # MongoDB তে $or দিয়ে কোয়েরি করা হচ্ছে
+            # 2) Partial (contains) search
+            or_clauses = [{"title": {"$regex": w, "$options": "i"}} for w in words]
             cursor = collection.find({"$or": or_clauses}).limit(5)
             
         courses = list(cursor)
         
         if not courses:
-            return {"context": "No matching course found."}
+            return {"context": "No matching courses found in the database for this specific query."}
             
-        # 3) Context সাজানো (আপনার JS কোডের হুবহু স্টাইলে)
+        # 3) AI-এর জন্য সুন্দর করে গুছিয়ে Context তৈরি করা
+        context_header = "Here are the exact matching courses found in the database:\n"
         context_parts = []
-        for c in courses:
+        
+        for idx, c in enumerate(courses, 1):
             title = c.get("title", "Unknown Course")
-            status = c.get("status", "not available")
+            status = c.get("status", "Not Specified")
             
-            # আপনার ডাটাবেসে price বা summary ফিল্ড থাকলে সেগুলোও যুক্ত করতে পারবেন:
-            # price = c.get("price", "0")
-            # summary = c.get("summary", "")
-            # context_parts.append(f"{title} — {price}৳ — {status}. {summary}")
+            # আপনার ডাটাবেসে অন্য ফিল্ড থাকলে এখানে যুক্ত করতে পারেন:
+            # price = c.get("price", "Free")
+            # item_text = f"{idx}. 📚 Course Name: {title}\n   🔹 Price: {price}\n   🔹 Status: {status}"
             
-            # আপাতত title এবং status দিয়ে স্ট্রিং তৈরি করা হলো
-            context_parts.append(f"{title} — Status: {status}")
+            item_text = f"{idx}. 📚 Course Name: {title}\n   🔹 Status: {status}"
+            context_parts.append(item_text)
             
-        # " | " দিয়ে সবগুলো কোর্সকে একসাথে যুক্ত করা
-        answer = " | ".join(context_parts)
+        # লাইন ব্রেক দিয়ে ডেটাগুলো জোড়া লাগানো
+        answer = context_header + "\n" + "\n\n".join(context_parts)
         
         return {"context": answer}
         
     except Exception as e:
-        return {"context": f"Error: {str(e)}"}
+        return {"context": f"System Error while fetching courses: {str(e)}"}
