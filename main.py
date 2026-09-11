@@ -86,9 +86,25 @@ def search_api(payload: QueryModel):
         
         for idx, c in enumerate(courses, 1):
             title = c.get("title", "Unknown Course")
-            status = c.get("status", "Not Specified")
+            level = c.get("level", "All Levels").capitalize()
+            language = c.get("language", "Not Specified")
+            lessons = c.get("total_lessons", "0")
             
-            item_text = f"{idx}. 📚 Course Name: {title}\n   🔹 Status: {status}"
+            # দাম এবং ডিসকাউন্ট প্রাইস হ্যান্ডেল করা
+            price = c.get("price", "0.00")
+            discount_price = c.get("discount_price", "")
+            
+            # যদি ডিসকাউন্ট প্রাইস থাকে এবং সেটি 0.00 না হয়, তবে সেটি দেখাবে
+            final_price = discount_price if (discount_price and discount_price not in ["0.00", "0"]) else price
+            
+            # AI এর পড়ার জন্য বিস্তারিত স্ট্রাকচার তৈরি
+            item_text = (
+                f"{idx}. 📚 Course Name: {title}\n"
+                f"   🔹 Level: {level}\n"
+                f"   🔹 Language: {language}\n"
+                f"   🔹 Total Lessons: {lessons}\n"
+                f"   🔹 Price: ${final_price}"
+            )
             context_parts.append(item_text)
             
         answer = context_header + "\n" + "\n\n".join(context_parts)
