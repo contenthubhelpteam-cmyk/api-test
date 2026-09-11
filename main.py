@@ -1,7 +1,7 @@
 import os
 import json
 import re
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pymongo import MongoClient
@@ -26,13 +26,13 @@ collection = db['upload_logs']
 class QueryModel(BaseModel):
     query: str = ""
 
-# 🟢 1. Home Endpoint
-@app.get("/")
+# 🟢 1. Home Endpoint (GET এবং HEAD উভয়ই সাপোর্ট করবে)
+@app.api_route("/", methods=["GET", "HEAD"])
 def home():
     return {"Message": "API is successfully running on Render!"}
 
-# 🟢 2. Ping / Health Check Endpoint (নতুন যুক্ত করা হলো)
-@app.get("/ping")
+# 🟢 2. Ping / Health Check (GET এবং HEAD উভয়ই সাপোর্ট করবে)
+@app.api_route("/ping", methods=["GET", "HEAD"])
 def ping():
     return {
         "status": "success", 
@@ -40,8 +40,8 @@ def ping():
         "message": "Server is healthy and active!"
     }
 
-# 🟢 3. Website Data Fetch Endpoint
-@app.get("/api/data")
+# 🟢 3. Website Data Fetch (GET এবং HEAD উভয়ই সাপোর্ট করবে)
+@app.api_route("/api/data", methods=["GET", "HEAD"])
 def get_data():
     try:
         data = list(collection.find({}).limit(100))
@@ -51,6 +51,13 @@ def get_data():
         return {"status": "error", "message": str(e)}
 
 # 🟢 4. AI Bot Smart Search Endpoint
+
+# বট প্ল্যাটফর্ম লিংক ভেরিফাই করার জন্য HEAD রিকোয়েস্ট পাঠালে এটি সরাসরি 200 OK রেসপন্স দেবে
+@app.head("/search")
+def search_head():
+    return Response(status_code=200)
+
+# আসল POST রিকোয়েস্টের জন্য
 @app.post("/search")
 def search_api(payload: QueryModel):
     try:
