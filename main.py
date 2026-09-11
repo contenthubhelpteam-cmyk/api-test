@@ -20,8 +20,8 @@ app.add_middleware(
 
 MONGO_URI = os.getenv("MONGO_URI")
 client = MongoClient(MONGO_URI)
-db = client['assetprim_uploader'] 
-collection = db['upload_logs'] 
+db = client['Assetprim'] 
+collection = db['assetprim_course'] 
 
 class QueryModel(BaseModel):
     query: str = ""
